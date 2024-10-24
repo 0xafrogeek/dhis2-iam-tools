@@ -1,0 +1,78 @@
+services:
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-latest}
+    container_name: postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${POSTGRES_KEYCLOAK_PASSWORD:-keycloak}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - local
+    restart: always
+    mem_limit: 300m
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:${KEYCLOAK_VERSION:-latest}
+    container_name: keycloak
+    environment:
+      KEYCLOAK_DB: postgres
+      KEYCLOAK_DB_URL_HOST: postgres
+      KEYCLOAK_DB_USERNAME: keycloak
+      KEYCLOAK_DB_PASSWORD: ${POSTGRES_KEYCLOAK_PASSWORD:-keycloak}
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_PROXY_HEADERS: xforwarded
+      KEYCLOAK_HTTP_ENABLED: true
+      KEYCLOAK_HOSTNAME_STRICT: false
+      KEYCLOAK_HOSTNAME_URL: http://${KEYCLOAK_DOMAIN}
+    volumes:
+      - ./keycloak/themes:/opt/keycloak/themes
+    networks:
+      - local
+    depends_on:
+      - postgres
+    restart: always
+    mem_limit: 500m
+    command: start
+
+  nginx:
+    image: nginx:${NGINX_VERSION:-latest}
+    container_name: nginx
+    environment:
+      KEYCLOAK_DOMAIN: ${KEYCLOAK_DOMAIN}
+    volumes:
+      - ./nginx/templates:/etc/nginx/templates
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      - local
+    restart: always
+    mem_limit: 100m
+
+  certbot:
+    image: certbot/certbot:${CERTBOT_VERSION:-latest}
+    container_name: certbot
+    environment:
+      CERTBOT_LETSENCRYPT_EMAIL: ${CERTBOT_LETSENCRYPT_EMAIL}
+      KEYCLOAK_DOMAIN: ${KEYCLOAK_DOMAIN}
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    depends_on:
+      - nginx
+    command: certonly --non-interactive --webroot -w /var/www/certbot --email ${CERTBOT_LETSENCRYPT_EMAIL} -d ${KEYCLOAK_DOMAIN} --agree-tos # Obtain SSL certificate
+    mem_limit: 50m
+
+volumes:
+  postgres_data:
+
+networks:
+  local:
+    ipam:
+      config:
+        - subnet: ${SUBNET:-172.16.0.0/29}
