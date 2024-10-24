@@ -1,0 +1,62 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16.4
+    container_name: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    networks:
+      - keycloak-network
+    environment:
+      POSTGRES_USER: $POSTGRES_USER
+      POSTGRES_PASSWORD: $POSTGRES_PASSWORD
+      POSTGRES_DB: $POSTGRES_DB
+  keycloak:
+    image: quay.io/keycloak/keycloak:22.0
+    container_name: keycloak
+    restart: always
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    depends_on:
+      - postgres
+    command:
+      - start
+    networks:
+      - keycloak-network
+    environment:
+      KEYCLOAK_DB: postgres
+      KEYCLOAK__DB_URL_HOST: postgres
+      KEYCLOAK__DB_URL_DATABSE: $POSTGRES_USER
+      KEYCLOAK__DB_USERNAME: $POSTGRES_DB
+      KEYCLOAK__DB_PASSWORD: $POSTGRES_PASSWORD
+      KEYCLOAK__HOSTNAME_URL: $KEYCLOAK_HOSTNAME_URL
+      KEYCLOAK__HOSTNAME_STRICT_HTTPS: "true"
+      KEYCLOAK__HOSTNAME_STRICT_BACKCHANNEL: "true"
+      KEYCLOAK__PROXY: edge
+      KEYCLOAK_ADMIN_USER: admin
+      KEYCLOAK_ADMIN_PASSWORD: $KEYCLOAK_ADMIN_PASSWORD
+      KEYCLOAK_FRONTEND_URL: $KEYCLOAK_FRONTEND_URL
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    environment:
+      - KEYCLOAK_HOSTNAME=$KEYCLOAK_HOSTNAME
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - /etc/letsencrypt:/etc/letsencrypt
+    depends_on:
+      - keycloak
+    networks:
+      - keycloak-network
+
+networks:
+  keycloak-network:
+    driver: bridge
